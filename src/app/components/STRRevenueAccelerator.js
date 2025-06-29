@@ -2,6 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, Check, Star, Play, Clock, Users, TrendingUp, FileText, Shield, ArrowRight, Calendar, DollarSign, Sparkles, Award, BookOpen, Download, ChevronRight } from 'lucide-react';
+import { loadStripe } from '@stripe/stripe-js';
+
+// Only use the publishable key in the frontend
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY);
 
 const STRRevenueAccelerator = () => {
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
@@ -24,8 +28,73 @@ const STRRevenueAccelerator = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const handlePayment = () => {
-    window.open(`https://gumroad.com/l/str-accelerator?wanted=true&email=${email}&price=${selectedPrice === 'earlybird' ? 29700 : 49700}`, '_blank');
+  const handlePayment = async () => {
+    try {
+      console.log('Payment handler started');
+      
+      // Validate email
+      if (!email || !email.includes('@') || !email.includes('.')) {
+        alert('Please enter a valid email address');
+        return;
+      }
+
+      console.log('Loading Stripe...');
+      const stripe = await stripePromise;
+      if (!stripe) {
+        console.error('Stripe failed to load');
+        alert('Could not initialize payment system. Please try again.');
+        return;
+      }
+      console.log('Stripe loaded successfully');
+
+      // Show loading state
+      const button = document.querySelector('button[type="submit"]');
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Processing...';
+      }
+
+      console.log('Making API request...');
+      // Create checkout session
+      const response = await fetch('./api/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          selectedPrice,
+        }),
+      });
+
+      console.log('API response received');
+      const data = await response.json();
+      console.log('API response data:', data);
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      console.log('Redirecting to Stripe checkout...');
+      // Redirect to Stripe Checkout
+      const result = await stripe.redirectToCheckout({
+        sessionId: data.sessionId,
+      });
+
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+    } catch (error) {
+      console.error('Payment error:', error);
+      alert('Payment failed: ' + (error.message || 'Please try again'));
+    } finally {
+      // Reset button state
+      const button = document.querySelector('button[type="submit"]');
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Continue to Secure Checkout →';
+      }
+    }
   };
 
   const testimonials = [
@@ -780,6 +849,7 @@ const STRRevenueAccelerator = () => {
 
             <button 
               onClick={handlePayment}
+              type="submit"
               disabled={!email}
               className="w-full bg-slate-700 hover:bg-slate-800 disabled:bg-gray-300 text-white py-4 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-xl disabled:cursor-not-allowed">
               Continue to Secure Checkout →
